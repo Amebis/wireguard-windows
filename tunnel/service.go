@@ -7,6 +7,7 @@ package tunnel
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -37,6 +38,7 @@ func (service *tunnelService) Execute(args []string, r <-chan svc.ChangeRequest,
 	var luid winipcfg.LUID
 	var config *conf.Config
 	var err error
+	proxyCtx, cancelProxies := context.WithCancel(context.Background())
 	serviceError := services.ErrorSuccess
 
 	defer func() {
@@ -89,6 +91,7 @@ func (service *tunnelService) Execute(args []string, r <-chan svc.ChangeRequest,
 		if adapter != nil {
 			adapter.Close()
 		}
+		cancelProxies()
 		if logErr == nil && adapter != nil && config != nil {
 			_ = runScriptCommand(config.Interface.PostDown, config.Name)
 		}
@@ -187,6 +190,12 @@ func (service *tunnelService) Execute(args []string, r <-chan svc.ChangeRequest,
 		return
 	}
 
+	proxies, err := spawnProxies(config, proxyCtx)
+	if err != nil {
+		serviceError = services.ErrorProxy
+		return
+	}
+
 	err = enableFirewall(config, luid)
 	if err != nil {
 		serviceError = services.ErrorFirewall
@@ -211,7 +220,7 @@ func (service *tunnelService) Execute(args []string, r <-chan svc.ChangeRequest,
 		serviceError = services.ErrorDeviceBringUp
 		return
 	}
-	watcher.Configure(adapter, config, luid)
+	watcher.Configure(adapter, config, luid, proxies)
 
 	err = runScriptCommand(config.Interface.PostUp, config.Name)
 	if err != nil {

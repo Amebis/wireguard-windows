@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -37,6 +38,7 @@ type interfaceWatcher struct {
 	conf    *conf.Config
 	adapter *driver.Adapter
 	luid    winipcfg.LUID
+	proxies []netip.Addr
 
 	setupMutex              sync.Mutex
 	interfaceChangeCallback winipcfg.ChangeCallback
@@ -72,6 +74,15 @@ func (iw *interfaceWatcher) setup(family winipcfg.AddressFamily) {
 		*changeCallbacks, err = monitorMTU(family, iw.luid)
 		if err != nil {
 			iw.errors <- interfaceWatcherError{services.ErrorMonitorMTUChanges, err}
+			return
+		}
+	}
+
+	if len(iw.proxies) > 0 {
+		log.Printf("[Proxyguard] Monitoring %s routes", ipversion)
+		*changeCallbacks, err = monitorProxyRoutes(family, iw.luid, iw.proxies)
+		if err != nil {
+			iw.errors <- interfaceWatcherError{services.ErrorMonitorProxyRouteChanges, err}
 			return
 		}
 	}
@@ -124,19 +135,19 @@ func watchInterface() (*interfaceWatcher, error) {
 				log.Println(fmt.Errorf("%v: %w", services.ErrorDeviceBringUp, err))
 			}
 		}
-	})
+	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to register interface change callback: %w", err)
 	}
 	return iw, nil
 }
 
-func (iw *interfaceWatcher) Configure(adapter *driver.Adapter, conf *conf.Config, luid winipcfg.LUID) {
+func (iw *interfaceWatcher) Configure(adapter *driver.Adapter, conf *conf.Config, luid winipcfg.LUID, proxies []netip.Addr) {
 	iw.setupMutex.Lock()
 	defer iw.setupMutex.Unlock()
 	iw.watchdog.Reset(time.Minute)
 
-	iw.adapter, iw.conf, iw.luid = adapter, conf, luid
+	iw.adapter, iw.conf, iw.luid, iw.proxies = adapter, conf, luid, proxies
 	for _, event := range iw.storedEvents {
 		if event.luid == luid {
 			iw.setup(event.family)

@@ -10,14 +10,11 @@ import (
 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
 )
 
-func findDefaultLUID(family winipcfg.AddressFamily, ourLUID winipcfg.LUID, lastLUID *winipcfg.LUID, lastIndex *uint32) error {
+func iterateForeignDefaultRoutes(family winipcfg.AddressFamily, ourLUID winipcfg.LUID, callback func(r *winipcfg.MibIPforwardRow2) error) error {
 	r, err := winipcfg.GetIPForwardTable2(family)
 	if err != nil {
 		return err
 	}
-	lowestMetric := ^uint32(0)
-	index := uint32(0)
-	luid := winipcfg.LUID(0)
 	for i := range r {
 		if r[i].DestinationPrefix.PrefixLength != 0 || r[i].InterfaceLUID == ourLUID {
 			continue
@@ -26,17 +23,33 @@ func findDefaultLUID(family winipcfg.AddressFamily, ourLUID winipcfg.LUID, lastL
 		if err != nil || ifrow.OperStatus != winipcfg.IfOperStatusUp {
 			continue
 		}
-
-		iface, err := r[i].InterfaceLUID.IPInterface(family)
+		err = callback(&r[i])
 		if err != nil {
-			continue
+			return err
+		}
+	}
+	return nil
+}
+
+func findDefaultLUID(family winipcfg.AddressFamily, ourLUID winipcfg.LUID, lastLUID *winipcfg.LUID, lastIndex *uint32) error {
+	lowestMetric := ^uint32(0)
+	index := uint32(0)
+	luid := winipcfg.LUID(0)
+	err := iterateForeignDefaultRoutes(family, ourLUID, func(r *winipcfg.MibIPforwardRow2) error {
+		iface, err := r.InterfaceLUID.IPInterface(family)
+		if err != nil {
+			return nil
 		}
 
-		if r[i].Metric+iface.Metric < lowestMetric {
-			lowestMetric = r[i].Metric + iface.Metric
-			index = r[i].InterfaceIndex
-			luid = r[i].InterfaceLUID
+		if r.Metric+iface.Metric < lowestMetric {
+			lowestMetric = r.Metric + iface.Metric
+			index = r.InterfaceIndex
+			luid = r.InterfaceLUID
 		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	if luid == *lastLUID && index == *lastIndex {
 		return nil
@@ -96,7 +109,7 @@ func monitorMTU(family winipcfg.AddressFamily, ourLUID winipcfg.LUID) ([]winipcf
 		if route != nil && route.DestinationPrefix.PrefixLength == 0 {
 			doIt()
 		}
-	})
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +117,7 @@ func monitorMTU(family winipcfg.AddressFamily, ourLUID winipcfg.LUID) ([]winipcf
 		if notificationType == winipcfg.MibParameterNotification {
 			doIt()
 		}
-	})
+	}, nil)
 	if err != nil {
 		cbr.Unregister()
 		return nil, err

@@ -197,7 +197,7 @@ func TestIPChangeMetric(t *testing.T) {
 		case MibParameterNotification:
 			changed = true
 		}
-	})
+	}, nil)
 	if err != nil {
 		t.Errorf("RegisterInterfaceChangeCallback() returned error: %w", err)
 		return
@@ -506,7 +506,7 @@ func TestAddDeleteRoute(t *testing.T) {
 		case MibDeleteInstance:
 			deleted = true
 		}
-	})
+	}, nil)
 	if err != nil {
 		t.Errorf("RegisterRouteChangeCallback() returned an error: %w", err)
 	} else {
