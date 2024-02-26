@@ -61,6 +61,7 @@ type peerView struct {
 	presharedKey        *labelTextLine
 	allowedIPs          *labelTextLine
 	endpoint            *labelTextLine
+	proxyEndpoint       *labelTextLine
 	persistentKeepalive *labelTextLine
 	latestHandshake     *labelTextLine
 	transfer            *labelTextLine
@@ -336,6 +337,7 @@ func newPeerView(parent walk.Container) (*peerView, error) {
 		{l18n.Sprintf("Preshared key:"), &pv.presharedKey},
 		{l18n.Sprintf("Allowed IPs:"), &pv.allowedIPs},
 		{l18n.Sprintf("Endpoint:"), &pv.endpoint},
+		{l18n.Sprintf("Proxy endpoint:"), &pv.proxyEndpoint},
 		{l18n.Sprintf("Persistent keepalive:"), &pv.persistentKeepalive},
 		{l18n.Sprintf("Latest handshake:"), &pv.latestHandshake},
 		{l18n.Sprintf("Transfer:"), &pv.transfer},
@@ -468,6 +470,12 @@ func (pv *peerView) apply(c *conf.Peer) {
 		pv.endpoint.show(c.Endpoint.String())
 	} else {
 		pv.endpoint.hide()
+	}
+
+	if len(c.ProxyEndpoint) > 0 {
+		pv.proxyEndpoint.show(c.ProxyEndpoint)
+	} else {
+		pv.proxyEndpoint.hide()
 	}
 
 	if c.PersistentKeepalive > 0 {

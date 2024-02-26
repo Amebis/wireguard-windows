@@ -6,8 +6,10 @@
 package conf
 
 import (
+	"bytes"
 	"encoding/base64"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -92,6 +94,14 @@ func parsePort(s string) (uint16, error) {
 		return 0, &ParseError{l18n.Sprintf("Invalid port"), s}
 	}
 	return uint16(m), nil
+}
+
+func parseURL(s string) (string, error) {
+	_, err := url.ParseRequestURI(s)
+	if err != nil {
+		return "", err
+	}
+	return s, nil
 }
 
 func parsePersistentKeepalive(s string) (uint16, error) {
@@ -296,6 +306,12 @@ func FromWgQuick(s, name string) (*Config, error) {
 					return nil, err
 				}
 				peer.Endpoint = *e
+			case "proxyendpoint":
+				url, err := parseURL(val)
+				if err != nil {
+					return nil, err
+				}
+				peer.ProxyEndpoint = url
 			default:
 				return nil, &ParseError{l18n.Sprintf("Invalid key for [Peer] section"), key}
 			}
@@ -393,6 +409,12 @@ func FromDriverConfiguration(interfaze *driver.Interface, existingConfig *Config
 				ip = netip.AddrFrom16(*(*[16]byte)(a.Address[:16]))
 			}
 			peer.AllowedIPs = append(peer.AllowedIPs, netip.PrefixFrom(ip, int(a.Cidr)))
+		}
+		for _, p := range existingConfig.Peers {
+			if bytes.Equal(peer.PublicKey[:], p.PublicKey[:]) {
+				peer.ProxyEndpoint = p.ProxyEndpoint
+				break
+			}
 		}
 		conf.Peers = append(conf.Peers, peer)
 	}

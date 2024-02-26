@@ -13,8 +13,9 @@ import (
 
 // RouteChangeCallback structure allows route change callback handling.
 type RouteChangeCallback struct {
-	cb   func(notificationType MibNotificationType, route *MibIPforwardRow2)
-	wait sync.WaitGroup
+	cb    func(notificationType MibNotificationType, route *MibIPforwardRow2)
+	unreg func()
+	wait  sync.WaitGroup
 }
 
 var (
@@ -27,8 +28,8 @@ var (
 // RegisterRouteChangeCallback registers a new RouteChangeCallback. If this particular callback is already
 // registered, the function will silently return. Returned RouteChangeCallback.Unregister method should be used
 // to unregister.
-func RegisterRouteChangeCallback(callback func(notificationType MibNotificationType, route *MibIPforwardRow2)) (*RouteChangeCallback, error) {
-	s := &RouteChangeCallback{cb: callback}
+func RegisterRouteChangeCallback(callback func(notificationType MibNotificationType, route *MibIPforwardRow2), onUnregister func()) (*RouteChangeCallback, error) {
+	s := &RouteChangeCallback{cb: callback, unreg: onUnregister}
 
 	routeChangeAddRemoveMutex.Lock()
 	defer routeChangeAddRemoveMutex.Unlock()
@@ -68,6 +69,10 @@ func (callback *RouteChangeCallback) Unregister() error {
 			return err
 		}
 		routeChangeHandle = 0
+	}
+
+	if callback.unreg != nil {
+		callback.unreg()
 	}
 
 	return nil

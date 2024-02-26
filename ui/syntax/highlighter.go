@@ -356,6 +356,10 @@ func (s stringSpan) isValidNetwork() bool {
 	return s.isValidIPv4() || s.isValidIPv6()
 }
 
+func (s stringSpan) isValidURL() bool {
+	return s.len != 0
+}
+
 type field int32
 
 const (
@@ -376,6 +380,7 @@ const (
 	fieldAllowedIPs
 	fieldEndpoint
 	fieldPersistentKeepalive
+	fieldProxyEndpoint
 	fieldInvalid
 )
 
@@ -421,6 +426,8 @@ func (s stringSpan) field() field {
 		return fieldPreDown
 	case s.isCaselessSame("PostDown"):
 		return fieldPostDown
+	case s.isCaselessSame("ProxyEndpoint"):
+		return fieldProxyEndpoint
 	}
 	return fieldInvalid
 }
@@ -541,6 +548,8 @@ func (hsa *highlightSpanArray) highlightValue(parent, s stringSpan, section fiel
 		hsa.append(parent.s, stringSpan{s.at(colon + 1), s.len - colon - 1}, highlightPort)
 	case fieldAddress, fieldDNS, fieldAllowedIPs:
 		hsa.highlightMultivalue(parent, s, section)
+	case fieldProxyEndpoint:
+		hsa.append(parent.s, s, validateHighlight(s.isValidURL(), highlightHost))
 	default:
 		hsa.append(parent.s, s, highlightError)
 	}

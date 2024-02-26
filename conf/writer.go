@@ -87,6 +87,10 @@ func (conf *Config) ToWgQuick() string {
 		if peer.PersistentKeepalive > 0 {
 			output.WriteString(fmt.Sprintf("PersistentKeepalive = %d\n", peer.PersistentKeepalive))
 		}
+
+		if len(peer.ProxyEndpoint) > 0 {
+			output.WriteString(fmt.Sprintf("ProxyEndpoint = %s\n", peer.ProxyEndpoint))
+		}
 	}
 	return output.String()
 }
