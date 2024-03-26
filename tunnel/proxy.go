@@ -49,7 +49,7 @@ func spawnProxies(conf *conf.Config, ctx context.Context) ([]netip.Addr, error) 
 			for _, ip := range pips {
 				addr, err := netip.ParseAddr(ip)
 				if err != nil {
-					continue
+					return nil, err
 				}
 				if m[addr] {
 					continue
