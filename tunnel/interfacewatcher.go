@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/netip"
 	"sync"
 	"time"
 
@@ -38,7 +37,7 @@ type interfaceWatcher struct {
 	conf    *conf.Config
 	adapter *driver.Adapter
 	luid    winipcfg.LUID
-	proxies []netip.Addr
+	proxies []*proxy
 
 	setupMutex              sync.Mutex
 	interfaceChangeCallback winipcfg.ChangeCallback
@@ -142,7 +141,7 @@ func watchInterface() (*interfaceWatcher, error) {
 	return iw, nil
 }
 
-func (iw *interfaceWatcher) Configure(adapter *driver.Adapter, conf *conf.Config, luid winipcfg.LUID, proxies []netip.Addr) {
+func (iw *interfaceWatcher) Configure(adapter *driver.Adapter, conf *conf.Config, luid winipcfg.LUID, proxies []*proxy) {
 	iw.setupMutex.Lock()
 	defer iw.setupMutex.Unlock()
 	iw.watchdog.Reset(time.Minute)
