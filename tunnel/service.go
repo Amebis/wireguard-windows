@@ -38,6 +38,7 @@ func (service *tunnelService) Execute(args []string, r <-chan svc.ChangeRequest,
 	var luid winipcfg.LUID
 	var config *conf.Config
 	var err error
+	var proxies []*proxy
 	proxyCtx, cancelProxies := context.WithCancel(context.Background())
 	serviceError := services.ErrorSuccess
 
@@ -190,7 +191,7 @@ func (service *tunnelService) Execute(args []string, r <-chan svc.ChangeRequest,
 		return
 	}
 
-	proxies, err := spawnProxies(config, proxyCtx)
+	proxies, err = spawnProxies(config, proxyCtx)
 	if err != nil {
 		serviceError = services.ErrorProxy
 		return

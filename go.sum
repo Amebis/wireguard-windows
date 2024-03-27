@@ -2,6 +2,10 @@ codeberg.org/eduVPN/proxyguard v0.0.0-20240213150724-adfa5487640a h1:OH5xfNALCNH
 codeberg.org/eduVPN/proxyguard v0.0.0-20240213150724-adfa5487640a/go.mod h1:fc7DsdgdLmrO7DN45HNp+ekVewlRcikSOkAvUeGUvWk=
 codeberg.org/eduVPN/proxyguard v0.0.0-20240227170952-f81a10eebf39 h1:+yJDFkj7MZ/ogFPcwGObwGGlFIx0z9GOH1icfhvAXQM=
 codeberg.org/eduVPN/proxyguard v0.0.0-20240227170952-f81a10eebf39/go.mod h1:fc7DsdgdLmrO7DN45HNp+ekVewlRcikSOkAvUeGUvWk=
+codeberg.org/eduVPN/proxyguard v0.0.0-20240326094651-7343c1ed49db h1:aRKdv51H78ukBZ2xPt6DFujfYgD47IlLFrZzyJm/wsc=
+codeberg.org/eduVPN/proxyguard v0.0.0-20240326094651-7343c1ed49db/go.mod h1:fc7DsdgdLmrO7DN45HNp+ekVewlRcikSOkAvUeGUvWk=
+codeberg.org/eduVPN/proxyguard v0.0.0-20240326134634-58687224bc8a h1:rYtSG/EYKcaLcvMVm4wiys6ci8JpKZC9I4WisNjzXOE=
+codeberg.org/eduVPN/proxyguard v0.0.0-20240326134634-58687224bc8a/go.mod h1:fc7DsdgdLmrO7DN45HNp+ekVewlRcikSOkAvUeGUvWk=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
 golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd h1:XcWmESyNjXJMLahc3mqVQJcgSTDxFxhETVlfk9uGc38=

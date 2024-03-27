@@ -33,8 +33,13 @@ func init() {
 	proxyguard.UpdateLogger(&ProxyLogger{})
 }
 
-func spawnProxies(conf *conf.Config, ctx context.Context) ([]netip.Addr, error) {
-	m := make(map[netip.Addr]bool)
+type proxy struct {
+	proxyguard.Client
+	Addresses []netip.Addr
+}
+
+func spawnProxies(conf *conf.Config, ctx context.Context) ([]*proxy, error) {
+	proxies := make([]*proxy, 0)
 	for _, peer := range conf.Peers {
 		if len(peer.ProxyEndpoint) > 0 {
 			log.Println("Resolving peer proxy name")
@@ -46,48 +51,48 @@ func spawnProxies(conf *conf.Config, ctx context.Context) ([]netip.Addr, error) 
 			if err != nil {
 				return nil, err
 			}
+			addresses := make([]netip.Addr, 0, len(pips))
 			for _, ip := range pips {
 				addr, err := netip.ParseAddr(ip)
 				if err != nil {
 					return nil, err
 				}
-				if m[addr] {
-					continue
-				}
-				m[addr] = true
+				addresses = append(addresses, addr)
 			}
 
 			log.Println("Spawning peer proxy")
 			proxyReady := make(chan error)
-			proxy := proxyguard.Client{
-				Listen: peer.Endpoint.String(),
-				Ready:  func() { proxyReady <- nil },
+			p := &proxy{
+				Client: proxyguard.Client{
+					Listen: peer.Endpoint.String(),
+					Ready:  func() { proxyReady <- nil },
+				},
+				Addresses: addresses,
 			}
-			go func() { proxyReady <- proxy.Tunnel(ctx, peer.ProxyEndpoint, pips) }()
+			proxies = append(proxies, p)
+			go func() { proxyReady <- p.Tunnel(ctx, peer.ProxyEndpoint, pips) }()
 			err = <-proxyReady
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
-
-	proxies := make([]netip.Addr, len(m))
-	for addr := range m {
-		proxies = append(proxies, addr)
-	}
 	return proxies, nil
 }
 
-func monitorProxyRoutes(family winipcfg.AddressFamily, ourLUID winipcfg.LUID, proxies []netip.Addr) ([]winipcfg.ChangeCallback, error) {
-	destinations := make([]netip.Prefix, 0, len(proxies))
-	for _, addr := range proxies {
-		if family == windows.AF_INET && !addr.Is4() {
-			continue
+func monitorProxyRoutes(family winipcfg.AddressFamily, ourLUID winipcfg.LUID, proxies []*proxy) ([]winipcfg.ChangeCallback, error) {
+	destProxy := make(map[netip.Prefix][]*proxy)
+	for _, p := range proxies {
+		for _, addr := range p.Addresses {
+			if family == windows.AF_INET && !addr.Is4() {
+				continue
+			}
+			if family == windows.AF_INET6 && !addr.Is6() {
+				continue
+			}
+			destination := netip.PrefixFrom(addr, addr.BitLen())
+			destProxy[destination] = append(destProxy[destination], p)
 		}
-		if family == windows.AF_INET6 && !addr.Is6() {
-			continue
-		}
-		destinations = append(destinations, netip.PrefixFrom(addr, addr.BitLen()))
 	}
 
 	type luidRouteData struct {
@@ -97,41 +102,62 @@ func monitorProxyRoutes(family winipcfg.AddressFamily, ourLUID winipcfg.LUID, pr
 	}
 	ourRoutes := make(map[luidRouteData]bool)
 
-	doIt := func() error {
+	doIt := func(restartProxies bool) error {
 		newRoutes := make(map[luidRouteData]bool)
+		proxiesToRestart := make(map[*proxy]bool)
 		err := iterateForeignDefaultRoutes(family, ourLUID, func(r *winipcfg.MibIPforwardRow2) error {
-			for j := range destinations {
+			for destination := range destProxy {
 				nextHop := r.NextHop.Addr()
-				err := r.InterfaceLUID.AddRoute(destinations[j], nextHop, 0)
-				if err != nil && err != windows.ERROR_OBJECT_ALREADY_EXISTS {
-					log.Printf("[Proxyguard] Failed to add route %v via %v: %v", destinations[j], nextHop, err)
-					continue
+				err := r.InterfaceLUID.AddRoute(destination, nextHop, 0)
+				if err == nil {
+					for _, p := range destProxy[destination] {
+						proxiesToRestart[p] = true
+					}
 				}
-				newRoutes[luidRouteData{
-					luid:        r.InterfaceLUID,
-					destination: destinations[j],
-					nextHop:     nextHop,
-				}] = true
+				if err == nil || err == windows.ERROR_OBJECT_ALREADY_EXISTS {
+					newRoutes[luidRouteData{
+						luid:        r.InterfaceLUID,
+						destination: destination,
+						nextHop:     nextHop,
+					}] = true
+				} else {
+					log.Printf("[Proxyguard] Failed to add route %v via %v: %v", destination, nextHop, err)
+				}
 			}
 			return nil
 		})
 		if err != nil {
 			return err
 		}
-
 		for r := range ourRoutes {
-			_, keepRoute := newRoutes[r]
-			if !keepRoute {
+			if _, keepRoute := newRoutes[r]; !keepRoute {
 				err := r.luid.DeleteRoute(r.destination, r.nextHop)
-				if err != nil && err != windows.ERROR_NOT_FOUND {
+				if err == nil {
+					for _, p := range destProxy[r.destination] {
+						proxiesToRestart[p] = true
+					}
+				} else if err != windows.ERROR_NOT_FOUND {
 					log.Printf("[Proxyguard] Failed to delete route %v via %v: %v", r.destination, r.nextHop, err)
 				}
 			}
 		}
 		ourRoutes = newRoutes
+		// TODO: This is commented for the time being, as there are timing issues and does more harm.
+		// Proxyguard cant handle rapid restart signals caused by multiple default route changes
+		// rendering it into a zombie. On the other hand, should routing change drop its HTTP(S)
+		// upstream connection, the Proxyguard will restart by its own.
+		// if restartProxies {
+		// 	for p := range proxiesToRestart {
+		// 		log.Printf("[Proxyguard] Signaling proxy %v to restart after default route change", p.Listen)
+		// 		err = p.SignalRestart()
+		// 		if err != nil {
+		// 			log.Printf("[Proxyguard] Failed to signal proxy %v to restart: %v", p.Listen, err)
+		// 		}
+		// 	}
+		// }
 		return nil
 	}
-	err := doIt()
+	err := doIt(false)
 	if err != nil {
 		return nil, err
 	}
@@ -148,19 +174,21 @@ func monitorProxyRoutes(family winipcfg.AddressFamily, ourLUID winipcfg.LUID, pr
 
 	cbr, err := winipcfg.RegisterRouteChangeCallback(func(notificationType winipcfg.MibNotificationType, route *winipcfg.MibIPforwardRow2) {
 		if route != nil && route.DestinationPrefix.PrefixLength == 0 {
-			doIt()
+			doIt(true)
 		}
 	}, cleanIt)
 	if err != nil {
+		cleanIt()
 		return nil, err
 	}
 	cbi, err := winipcfg.RegisterInterfaceChangeCallback(func(notificationType winipcfg.MibNotificationType, iface *winipcfg.MibIPInterfaceRow) {
 		if notificationType == winipcfg.MibParameterNotification {
-			doIt()
+			doIt(true)
 		}
 	}, cleanIt)
 	if err != nil {
 		cbr.Unregister()
+		cleanIt()
 		return nil, err
 	}
 	return []winipcfg.ChangeCallback{cbr, cbi}, nil
